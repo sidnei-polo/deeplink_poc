@@ -19,11 +19,13 @@ final router = GoRouter(
       ),
       routes: [
         GoRoute(
-          path: ':supplierId',
-          pageBuilder: (context, state) => MaterialPage(
-            child: SupplierPage(supplierId: state.params['supplierId']!),
-          ),
-        ),
+            path: 'catalogue/:supplierId',
+            pageBuilder: (context, state) {
+              final offset = double.tryParse(state.queryParams['offset'] ?? '');
+              return MaterialPage(
+                child: CataloguePage(supplierId: state.params['supplierId']!, offset: offset),
+              );
+            }),
       ],
     ),
     GoRoute(
@@ -75,58 +77,62 @@ class MyApp extends StatelessWidget {
 }
 
 class HomePage extends StatefulWidget {
-  final HomeTab? homeTab;
-  final OrdersTab? ordersTab;
+  final HomeTab homeTab;
+  final OrdersTab ordersTab;
 
-  const HomePage({this.homeTab, this.ordersTab, super.key});
+  const HomePage({this.homeTab = HomeTab.suppliers, this.ordersTab = OrdersTab.open, super.key});
 
   @override
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
-  late TabController _tabController;
+class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
+  late TabController _homeTabController;
+  late TabController _ordersTabController;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(
+    _homeTabController = TabController(
       length: HomeTab.values.length,
       vsync: this,
-      initialIndex: widget.homeTab?.index ?? HomeTab.suppliers.index,
+      initialIndex: widget.homeTab.index,
+    );
+    _ordersTabController = TabController(
+      length: OrdersTab.values.length,
+      vsync: this,
+      initialIndex: widget.ordersTab.index,
     );
   }
 
   @override
   void didUpdateWidget(covariant HomePage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.homeTab != null) {
-      _tabController.index = widget.homeTab!.index;
-    }
+    _homeTabController.index = widget.homeTab.index;
+    _ordersTabController.index = widget.ordersTab.index;
   }
 
   @override
   Widget build(BuildContext context) {
-    super.build(context);
     final router = GoRouter.of(context);
     return Scaffold(
       appBar: AppBar(title: Text(router.location)),
       body: TabBarView(
         physics: const NeverScrollableScrollPhysics(),
-        controller: _tabController,
+        controller: _homeTabController,
         children: [
           const SuppliersPage(),
           const Center(
             child: Text("Chat"),
           ),
-          OrdersPage(ordersTab: widget.ordersTab),
+          OrdersPage(tabController: _ordersTabController),
           const Center(
             child: Text("Settings"),
           ),
         ],
       ),
       bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _tabController.index,
+        currentIndex: _homeTabController.index,
         selectedItemColor: Colors.indigo,
         unselectedItemColor: Colors.grey,
         onTap: (index) => context.go(HomeTab.values[index].route),
@@ -157,7 +163,11 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   }
 
   @override
-  bool get wantKeepAlive => true;
+  void dispose() {
+    _homeTabController.dispose();
+    _ordersTabController.dispose();
+    super.dispose();
+  }
 }
 
 class SuppliersPage extends StatelessWidget {
@@ -174,59 +184,58 @@ class SuppliersPage extends StatelessWidget {
   }
 }
 
-class SupplierPage extends StatelessWidget {
+class CataloguePage extends StatefulWidget {
   final String supplierId;
+  final double? offset;
 
-  const SupplierPage({required this.supplierId, super.key});
+  const CataloguePage({required this.supplierId, this.offset, super.key});
+
+  @override
+  State<CataloguePage> createState() => _CataloguePageState();
+}
+
+class _CataloguePageState extends State<CataloguePage> {
+  late ScrollController _scrollController;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController = ScrollController(initialScrollOffset: widget.offset ?? 0);
+  }
+
+  @override
+  void didUpdateWidget(covariant CataloguePage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.offset != widget.offset && widget.offset != null) {
+      _scrollController.jumpTo(widget.offset!);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final router = GoRouter.of(context);
     return Scaffold(
       appBar: AppBar(title: Text(router.location)),
-      body: Center(
-        child: Text(supplierId),
+      body: ListView.builder(
+        controller: _scrollController,
+        itemCount: 100,
+        itemBuilder: (context, index) => Text(index.toString()),
       ),
     );
   }
 }
 
-class OrdersPage extends StatefulWidget {
-  final OrdersTab? ordersTab;
+class OrdersPage extends StatelessWidget {
+  final TabController tabController;
 
-  const OrdersPage({this.ordersTab, super.key});
-
-  @override
-  State<OrdersPage> createState() => _OrdersPageState();
-}
-
-class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(
-      length: OrdersTab.values.length,
-      vsync: this,
-      initialIndex: widget.ordersTab?.index ?? OrdersTab.open.index,
-    );
-  }
-
-  @override
-  void didUpdateWidget(covariant OrdersPage oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.ordersTab != null) {
-      _tabController.index = widget.ordersTab!.index;
-    }
-  }
+  const OrdersPage({required this.tabController, super.key});
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
         TabBar(
-          controller: _tabController,
+          controller: tabController,
           labelColor: Colors.blue,
           onTap: (index) => context.go(OrdersTab.values[index].route),
           tabs: const [
@@ -237,7 +246,7 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
         ),
         Expanded(
           child: TabBarView(
-            controller: _tabController,
+            controller: tabController,
             children: const [
               Center(child: Text('open')),
               Center(child: Text('past')),
